@@ -1,21 +1,38 @@
-# Multimodal Deep Learning for Brain Tumor Survival Prediction
+# Quantifying Cross-Modal Interactions in Multimodal Glioma Survival Prediction
 
-A deep learning framework for predicting prognosis in brain tumors by integrating histopathology whole slide images (WSI) with gene expression profiles. This implementation is based on the methodology described in "Multimodal deep learning to predict prognosis in adult and pediatric brain tumors" (Steyaert et al., Communications Medicine, 2023).
+**InterSHAP analysis for multimodal deep learning — Evidence for additive signal integration and prognostic biomarker potential**
+
+This repository contains the implementation for replicating and extending a state-of-the-art multimodal glioma survival framework [1], and applying InterSHAP [7] to quantify cross-modal interactions between whole slide images (WSI) and RNA-seq data. The codebase includes the full training pipeline, four fusion architectures, the InterSHAP computation module, and prognostic validation analyses.
+
+**Paper**: *Quantifying Cross-Modal Interactions in Multimodal Glioma Survival Prediction: Evidence for Additive Signal Integration and Prognostic Biomarker Potential* — Iain Swift, Jing Hua Ye, Ruairí O'Reilly (Munster Technological University)
 
 ---
 
 ## Table of Contents
 
-1. [Overview](#overview)
-2. [Project Structure](#project-structure)
-3. [Installation](#installation)
-4. [Data Preparation](#data-preparation)
-5. [Configuration](#configuration)
-6. [Training Pipeline](#training-pipeline)
-7. [Model Architectures](#model-architectures)
-8. [Evaluation](#evaluation)
-9. [Troubleshooting](#troubleshooting)
-10. [References](#references)
+1. [Key Findings](#key-findings)
+2. [Overview](#overview)
+3. [Project Structure](#project-structure)
+4. [Installation](#installation)
+5. [Data Preparation](#data-preparation)
+6. [Configuration](#configuration)
+7. [Training Pipeline](#training-pipeline)
+8. [Model Architectures](#model-architectures)
+9. [InterSHAP Analysis](#intershap-analysis)
+10. [Prognostic Biomarker Validation](#prognostic-biomarker-validation)
+11. [Evaluation](#evaluation)
+12. [Troubleshooting](#troubleshooting)
+13. [References](#references)
+
+---
+
+## Key Findings
+
+| Finding | Summary |
+|---------|---------|
+| **Inverse performance–interaction relationship** | Models achieving superior discrimination (C-index: 0.64→0.82) exhibit equivalent or *lower* cross-modal interaction (4.8%→3.0%) |
+| **Stable additive decomposition** | WSI ≈ 40%, RNA ≈ 55%, Interaction ≈ 5% across all architectures |
+| **Prognostic biomarker potential** | Elevated InterSHAP predicts worse survival (HR = 1.96, p < 10⁻³⁵; median 33.6 vs 114.0 months) |
 
 ---
 
@@ -23,93 +40,110 @@ A deep learning framework for predicting prognosis in brain tumors by integratin
 
 ### Objective
 
-Predict patient survival outcomes using multimodal data fusion of:
+This work addresses a fundamental question in multimodal learning: **do multimodal cancer survival models learn genuine cross-modal interactions, or do they simply combine independent signals additively?**
+
+InterSHAP (a Shapley-based interaction metric) is adapted from classification to Cox survival models and applied to a replication and extension of the multimodal glioma survival framework described in [1], combining:
 - **Histopathology Images**: Whole Slide Images (WSI) in SVS format
 - **Gene Expression**: RNA-seq FPKM values (12,778 genes)
 
+from the TCGA-GBM/LGG cohorts (n = 575).
+
 ### Fusion Strategies
 
-This framework implements four distinct approaches:
+Four fusion architectures of increasing complexity are evaluated:
+
+| Architecture | Params | Description | Interaction Mechanism |
+|-------------|--------|-------------|----------------------|
+| **Early Fusion MLP** | 8.8M | Feature concatenation + MLP (baseline, replicating [1]) | Implicit (hidden layers) |
+| **Cross-Attention** | 1.8M | Bidirectional attention between modalities | Explicit (learned attention) |
+| **Bilinear Fusion** | 0.54M | Low-rank multiplicative interaction | Explicit (outer product) |
+| **Gated Fusion** | 3.2M | Dynamic weighting conditioned on both modalities | Dynamic weighting |
+
+Additionally, two unimodal baselines are trained:
 
 | Model | Description | Input |
 |-------|-------------|-------|
-| **Unimodal WSI** | ResNet50 on histopathology patches | 224x224 image patches |
+| **Unimodal WSI** | ResNet-50 on histopathology patches | 224×224 image patches |
 | **Unimodal RNA** | MLP on gene expression | 12,778 gene features |
-| **Early Fusion** | MLP on concatenated extracted features | 4,096 features (2,048 WSI + 2,048 RNA) |
-| **Late Fusion** | Cox regression on model scores | 2 scores (WSI + RNA) |
-| **Joint Fusion** | End-to-end multimodal network | Raw patches + gene expression |
 
-### Evaluation Metric
+### Evaluation Metrics
 
-All models are evaluated using the **Concordance Index (C-Index)**, which measures the model's ability to correctly rank patient survival times. A C-Index of 0.5 indicates random performance, while 1.0 indicates perfect ranking.
+- **Concordance Index (C-Index)**: Primary discrimination metric
+- **Time-dependent Brier Score**: Calibration at 12, 36, and 60 months
+- **InterSHAP (%)**: Cross-modal interaction as percentage of total model behaviour
 
 ---
 
 ## Project Structure
 
 ```
-Thesis-MultiModal-Survival/
-|
-|-- 1_HistoPathology/           # WSI processing and training
-|   |-- 1_WSI2Patches.py        # Extract patches from SVS files
-|   |-- 2_HistoPath_train.py    # Train ResNet50 model
-|   |-- 3_HistoPath_savescore.py    # Save model predictions
-|   |-- 4_HistoPath_extractfeatures.py  # Extract 2048-dim embeddings
-|   |-- models.py               # Dataset and model definitions
-|   +-- resnet.py               # Modified ResNet50 architecture
-|
-|-- 2_GeneExpression/           # RNA-seq processing and training
-|   |-- 1_GeneExpress_train.py  # Train MLP model
-|   |-- 2_GeneExpress_savescore.py  # Save model predictions
-|   |-- 3_GeneExpress_extractfeatures.py  # Extract embeddings
-|   |-- datasets.py             # RNA dataset loader
-|   |-- models.py               # MLP architecture
-|   |-- process_rna.py          # RNA preprocessing script
-|   +-- genes.txt               # List of 12,778 target genes
-|
-|-- 3_EarlyFusion/              # Early fusion model
-|   |-- 1_Concat2Features.py    # Concatenate WSI + RNA features
-|   |-- 2_EarlyFusion_train.py  # Train fusion MLP
-|   |-- 3_EarlyFusion_savescore.py  # Save predictions
-|   |-- split_features.py       # Split features into train/test
-|   |-- datasets.py             # Feature dataset loader
-|   +-- models.py               # Fusion MLP architecture
-|
-|-- 4_LateFusion/               # Late fusion model
-|   |-- 1_MergeScores.py        # Combine WSI + RNA scores
-|   +-- 2_LateFusion.R          # Cox regression in R
-|
-|-- 5_JointFusion/              # Joint fusion model
-|   |-- 1_JointFusion_train.py  # End-to-end multimodal training
-|   |-- 2_JointFusion_savescore.py  # Save predictions
-|   |-- datasets.py             # Multimodal dataset loader
-|   |-- models.py               # Joint architecture
-|   +-- resnet.py               # ResNet50 for joint model
-|
-|-- config/                     # Configuration files
-|   |-- survcox/                # Cox loss configurations
-|   |   |-- config_ffpe_train_survcox.json
-|   |   |-- config_rna_train_survcox.json
-|   |   |-- config_joint_train_survcox.json
-|   |   |-- config_feature_train_survcox.json
-|   |   +-- ... (savescore and extractfeatures configs)
-|   +-- survbin/                # Survival bin configurations (alternative)
-|
-|-- MyData/                     # Your data directory
-|   |-- patientinfo.csv         # Patient metadata
-|   |-- patches/                # Extracted WSI patches
-|   |-- masks/                  # Tissue segmentation masks
-|   |-- splits/                 # Train/test CSV files
-|   +-- results/                # Model outputs
-|
-|-- ExampleData/                # Example CSV formats
-|
-|-- train_with_cv.py            # Cross-validation training wrapper
-|-- analyze_results.py          # Results analysis script
-|-- create_joint_splits.py      # Create joint modality splits
-|-- environment.yml             # Conda environment specification
-|-- requirements.txt            # Pip requirements
-+-- README.md                   # This file
+intershap-glioma/
+│
+├── 1_HistoPathology/               # WSI processing and training
+│   ├── 1_WSI2Patches.py            # Extract patches from SVS files
+│   ├── 2_HistoPath_train.py        # Train ResNet-50 model
+│   ├── 3_HistoPath_savescore.py    # Save model predictions
+│   ├── 4_HistoPath_extractfeatures.py  # Extract 2048-dim embeddings
+│   ├── models.py                   # Dataset and model definitions
+│   └── resnet.py                   # Modified ResNet-50 architecture
+│
+├── 2_GeneExpression/               # RNA-seq processing and training
+│   ├── 1_GeneExpress_train.py      # Train MLP model
+│   ├── 2_GeneExpress_savescore.py  # Save model predictions
+│   ├── 3_GeneExpress_extractfeatures.py  # Extract embeddings
+│   ├── datasets.py                 # RNA dataset loader
+│   ├── models.py                   # MLP architecture
+│   ├── process_rna.py              # RNA preprocessing script
+│   └── genes.txt                   # List of 12,778 target genes
+│
+├── 3_EarlyFusion/                  # Early fusion + attention architectures
+│   ├── 1_Concat2Features.py        # Concatenate WSI + RNA features
+│   ├── 2_EarlyFusion_train.py      # Train fusion MLP
+│   ├── 3_EarlyFusion_savescore.py  # Save predictions
+│   ├── split_features.py           # Split features into train/test
+│   ├── datasets.py                 # Feature dataset loader
+│   ├── models.py                   # Fusion MLP architecture
+│   ├── models_attention.py         # Cross-Attention, Bilinear, Gated fusion
+│   ├── train_attention_models.py   # Train attention-based architectures
+│   ├── run_attention_experiment.py  # Run attention experiments (5 seeds)
+│   ├── analyze_attention_intershap.py  # Compare InterSHAP across architectures
+│   └── apply_intershap.py          # Apply InterSHAP to early fusion model
+│
+├── 4_LateFusion/                   # Late Fusion (validation only)
+│   ├── 1_MergeScores.py            # Combine WSI + RNA scores
+│   ├── 2_LateFusion.R              # Cox regression in R
+│   ├── apply_intershap.py          # Apply InterSHAP to late fusion
+│   └── apply_intershap_direct.py   # Direct InterSHAP computation
+│
+├── 5_JointFusion/                  # Joint Fusion model
+│   ├── 1_JointFusion_train.py      # End-to-end multimodal training
+│   ├── 2_JointFusion_savescore.py  # Save predictions
+│   ├── datasets.py                 # Multimodal dataset loader
+│   ├── models.py                   # Joint architecture
+│   ├── resnet.py                   # ResNet-50 for joint model
+│   └── apply_intershap.py          # Apply InterSHAP to joint fusion
+│
+├── Intershap/                      # InterSHAP computation and validation
+│   ├── intershap_utils.py          # Core library: ModalityMasker, Shapley computation
+│   ├── synthetic_verification.py   # Synthetic tests (Uniqueness, XOR, Redundancy)
+│   ├── paper_analysis.py           # Multi-seed cross-fusion InterSHAP orchestrator
+│   ├── full_dataset_analysis.py    # Full cohort InterSHAP (→ full_dataset_intershap.csv)
+│   ├── cv_robustness_analysis.py   # Cross-fold model stability
+│   ├── statistical_validation.py   # Cox PH, bootstrap, RMST, permutation tests
+│   └── run_system.sh               # Master execution script
+│
+├── config/                         # Configuration files
+│   ├── survcox/                    # Cox loss configurations
+│   └── survbin/                    # Survival bin configurations
+│
+├── ExampleData/                    # Example CSV formats for each modality
+│
+├── train_with_cv.py                # Cross-validation training wrapper
+├── analyze_results.py              # Results analysis script
+├── create_joint_splits.py          # Create joint modality splits
+├── environment.yml                 # Conda environment specification
+├── requirements.txt                # Pip requirements
+└── README.md                       # This file
 ```
 
 ---
@@ -125,8 +159,8 @@ Thesis-MultiModal-Survival/
 ### Step 1: Clone Repository
 
 ```bash
-git clone https://github.com/ISwift7/Thesis-MultiModal-Survival.git
-cd Thesis-MultiModal-Survival
+git clone https://github.com/iainswift/intershap-glioma.git
+cd intershap-glioma
 ```
 
 ### Step 2: Create Conda Environment
@@ -148,12 +182,6 @@ pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https
 python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA Available: {torch.cuda.is_available()}')"
 ```
 
-Expected output:
-```
-PyTorch: 2.5.1
-CUDA Available: True
-```
-
 ### Dependencies
 
 Key packages included in the environment:
@@ -164,12 +192,14 @@ Key packages included in the environment:
 | torchvision | 0.20.1 | Image transforms and pretrained models |
 | scikit-learn | 1.3+ | Cross-validation and metrics |
 | scikit-survival | 0.21+ | Survival analysis utilities |
-| lifelines | 0.27+ | Concordance index calculation |
+| lifelines | 0.27+ | Concordance index, Kaplan-Meier, Cox regression |
 | openslide-python | 1.3+ | WSI file reading |
 | pandas | 2.0+ | Data manipulation |
-| R (r-base) | 4.3+ | Late fusion Cox regression |
-| r-survival | - | R survival analysis |
-| r-glmnet | - | Regularized Cox regression |
+| matplotlib | 3.7+ | Publication-ready figures |
+| scipy | 1.10+ | Statistical tests |
+| R (r-base) | 4.3+ | Late Fusion Cox regression |
+| r-survival | — | R survival analysis |
+| r-glmnet | — | Regularised Cox regression |
 
 ---
 
@@ -177,33 +207,25 @@ Key packages included in the environment:
 
 ### Required Data Sources
 
-1. **Whole Slide Images (WSI)**: SVS format files from TCGA
-2. **RNA-seq Data**: FPKM gene expression files from TCGA
-3. **Clinical Data**: Survival time, vital status, and grade information
+1. **Whole Slide Images (WSI)**: SVS format files from TCGA-GBM and TCGA-LGG
+2. **RNA-seq Data**: RSEM-normalised gene expression profiles from TCGA
+3. **Clinical Data**: Overall survival, censoring status, tumour type (GBM/LGG)
 
-### Directory Structure
+### Cohort Summary
 
-```
-MyData/
-|-- patientinfo.csv         # Patient metadata (required)
-|-- wsi_files/              # Raw SVS files (for patch extraction)
-|-- patches/                # Extracted patches (created by Step 1)
-|   +-- TCGA-XX-XXXX-01Z-00-DX1/
-|       |-- loc.txt
-|       +-- TCGA-XX-XXXX-01Z-00-DX1_patch_0.png
-|       +-- ...
-|-- masks/                  # Tissue masks (created by Step 1)
-|-- splits/                 # Train/test CSV files (required)
-|   |-- train_wsi.csv
-|   |-- test_wsi.csv
-|   |-- rna_train.csv
-|   |-- rna_test.csv
-|   |-- joint_train.csv
-|   +-- joint_test.csv
-+-- results/                # Model outputs (created during training)
-```
+After quality filtering for complete WSI, RNA-seq, and survival data:
+
+| Property | Value |
+|----------|-------|
+| Total patients | 575 |
+| GBM | 67 (11.7%) |
+| LGG | 508 (88.3%) |
+| Death events | 195 (33.9%) |
+| Median follow-up (censored) | 14.3 months |
 
 ### Step 1: Extract Patches from WSI
+
+Whole-slide images are processed at 20× magnification into 224×224 patches:
 
 ```bash
 python 1_HistoPathology/1_WSI2Patches.py \
@@ -215,57 +237,20 @@ python 1_HistoPathology/1_WSI2Patches.py \
     --num_process 10
 ```
 
-Parameters:
-- `--patch_size`: Patch dimensions (default: 224x224 for ResNet)
-- `--max_patches_per_slide`: Maximum patches per WSI (default: 2000)
-- `--num_process`: Parallel processing workers
-
 ### Step 2: Process RNA Data
 
-If starting from raw TCGA RNA-seq files:
+RSEM-normalised RNA-seq profiles are filtered to genes with >80% non-zero expression, yielding 12,778 features:
 
 ```bash
 python 2_GeneExpression/process_rna.py
 ```
 
-This script:
-1. Loads FPKM values from TSV files
-2. Maps samples to TCGA barcodes
-3. Applies log2(x+1) normalization
-4. Selects the 12,778 target genes
-5. Merges with clinical data
-6. Creates survival bins (quartiles)
+This script applies log2(x+1) normalisation, selects the 12,778 target genes, and merges with clinical data.
 
 ### Step 3: Prepare Data Splits
 
-Create the required CSV files in `MyData/splits/`:
+An 80%/20% train/test split stratified by outcome is used, with 10-fold cross-validation on the full dataset for robustness assessment:
 
-**train_wsi.csv / test_wsi.csv format:**
-```csv
-case,wsi_file_name,survival_months,vital_status,survival_bin
-TCGA-FG-A60L,TCGA-FG-A60L-01Z-00-DX1,21.52,0,2
-```
-
-**rna_train.csv / rna_test.csv format:**
-```csv
-case,survival_months,vital_status,survival_bin,grade_binary,rna_0,rna_1,...,rna_12777
-TCGA-FG-A60L,21.52,0,2,1,3.45,2.12,...,0.89
-```
-
-**joint_train.csv / joint_test.csv format:**
-```csv
-case,survival_months,vital_status,survival_bin,wsi_file_name,rna_0,rna_1,...,rna_12777
-TCGA-FG-A60L,21.52,0,2,TCGA-FG-A60L-01Z-00-DX1,3.45,2.12,...,0.89
-```
-
-### Data Split Guidelines
-
-Following the paper methodology:
-- **Train/Test Split**: 80% / 20% stratified by survival bin and vital status
-- **Cross-Validation**: 10-fold stratified CV on training set
-- **No Validation Leakage**: Test set is never seen during training or model selection
-
-Use the provided script to create joint splits:
 ```bash
 python create_joint_splits.py
 ```
@@ -274,86 +259,20 @@ python create_joint_splits.py
 
 ## Configuration
 
-### Configuration Files
+All training parameters are specified in JSON configuration files in `config/survcox/`. See existing configs for WSI, RNA, Early Fusion, and Joint Fusion models.
 
-All training parameters are specified in JSON configuration files located in `config/survcox/`.
+### Training Protocol (All Architectures)
 
-### WSI Model Configuration (config_ffpe_train_survcox.json)
-
-```json
-{
-    "model_name": "resnet50",
-    "num_classes": 1,
-    "batch_size": 128,
-    "num_epochs": 10,
-    "img_size": 224,
-    "lr": 0.0005,
-    "weight_decay": 0.001,
-    "pretrained": true,
-    "n_layers_to_train": 2,
-    "aggregator": "identity",
-    "aggregator_hdim": 2048,
-    "max_patch_per_wsi_train": 100,
-    "task": "survival_prediction",
-    "data_path": "MyData/patches",
-    "train_csv_path": "MyData/splits/train_wsi.csv",
-    "test_csv_path": "MyData/splits/test_wsi.csv",
-    "checkpoint_path": "MyData/results/ffpe/checkpoints/",
-    "flag": "ffpe_model_survcox"
-}
-```
-
-### RNA Model Configuration (config_rna_train_survcox.json)
-
-```json
-{
-    "task": "survival_prediction",
-    "num_classes": 1,
-    "batch_size": 128,
-    "num_epochs": 20,
-    "lr_rna": 1e-05,
-    "lr_mlp": 1e-05,
-    "weight_decay": 1e-05,
-    "train_csv_path": "MyData/splits/rna_train.csv",
-    "test_csv_path": "MyData/splits/rna_test.csv",
-    "checkpoint_path": "MyData/results/rna/checkpoints/",
-    "flag": "rna_model_survcox"
-}
-```
-
-### Joint Fusion Configuration (config_joint_train_survcox.json)
-
-```json
-{
-    "model_name": "resnet50",
-    "task": "survival_prediction",
-    "num_classes": 1,
-    "batch_size": 32,
-    "num_epochs": 10,
-    "lr_rna": 1e-06,
-    "lr_histo": 5e-05,
-    "lr_mlp": 0.01,
-    "weight_decay": 1e-05,
-    "n_layers_to_train": 2,
-    "max_patch_per_wsi_train": 100,
-    "data_path": "MyData/patches",
-    "train_csv_path": "MyData/splits/joint_train.csv",
-    "test_csv_path": "MyData/splits/joint_test.csv",
-    "checkpoint_path": "MyData/results/joint_fusion/checkpoints/",
-    "flag": "jointfusion_model_survcox"
-}
-```
-
-### Key Parameters Explained
-
-| Parameter | Description | Typical Value |
-|-----------|-------------|---------------|
-| `task` | Loss function type | `survival_prediction` (Cox) or `survival_bin` (NLL) |
-| `num_classes` | Output dimensions | 1 for Cox, 4 for survival bins |
-| `n_layers_to_train` | ResNet layers to fine-tune | 2 (last 2 blocks) |
-| `aggregator` | Patch aggregation method | `identity`, `attention`, or `mean` |
-| `max_patch_per_wsi_train` | Patches sampled per WSI | 100 |
-| `pretrained` | Use ImageNet weights | `true` |
+| Parameter | Value |
+|-----------|-------|
+| Loss function | Cox partial likelihood |
+| Optimiser | Adam |
+| Learning rate | 10⁻⁴ (attention models), 10⁻⁶ (MLP baseline) |
+| Weight decay | 10⁻⁵ |
+| Batch size | 128 |
+| Early stopping | Validation C-index, patience 20 epochs |
+| Epochs | 80 (attention models) |
+| Multi-seed training | 5 random seeds per architecture |
 
 ---
 
@@ -361,36 +280,46 @@ All training parameters are specified in JSON configuration files located in `co
 
 ### Overview
 
-The complete pipeline consists of three stages executed sequentially:
+The complete pipeline consists of five stages:
 
 ```
 Stage 1: Unimodal Training
-    WSI Model (ResNet50) ---------+
-    RNA Model (MLP) -------------+
-                                  |
-Stage 2: Feature Extraction       |
-    Extract WSI embeddings ------+
-    Extract RNA embeddings ------+
-    Save model scores -----------+
-                                  |
-Stage 3: Fusion Training          |
-    Early Fusion (MLP) ----------+
-    Late Fusion (Cox) -----------+
-    Joint Fusion (E2E) ----------+
+    WSI Model (ResNet-50) ────────┐
+    RNA Model (MLP) ──────────────┤
+                                  │
+Stage 2: Feature Extraction       │
+    Extract WSI embeddings (2048D)┤
+    Extract RNA embeddings (2048D)┤
+    Save model scores ────────────┤
+                                  │
+Stage 3: Fusion Training          │
+    Early Fusion MLP (baseline) ──┤
+    Cross-Attention ──────────────┤
+    Bilinear Fusion ──────────────┤
+    Gated Fusion ─────────────────┤
+    Late Fusion (Cox, validation) ┤
+                                  │
+Stage 4: InterSHAP Computation    │
+    Synthetic validation ─────────┤
+    Coalition evaluation ─────────┤
+    Variance decomposition ───────┤
+                                  │
+Stage 5: Prognostic Validation    │
+    Cox regression ───────────────┤
+    Kaplan-Meier analysis ────────┤
+    Bootstrap / Permutation ──────┘
 ```
 
 ### Stage 1: Unimodal Model Training
 
-Train the WSI and RNA models with 10-fold cross-validation:
-
 ```bash
-# Train WSI model (approximately 7-8 hours)
+# Train WSI model (~7.5 hours for 10 folds)
 python train_with_cv.py \
     --modality ffpe \
     --config config/survcox/config_ffpe_train_survcox.json \
     --n_folds 10
 
-# Train RNA model (approximately 1-2 hours)
+# Train RNA model (~1.5 hours for 10 folds)
 python train_with_cv.py \
     --modality rna \
     --config config/survcox/config_rna_train_survcox.json \
@@ -399,20 +328,16 @@ python train_with_cv.py \
 
 ### Stage 2: Feature and Score Extraction
 
-After training unimodal models, extract features and scores:
-
 ```bash
 # Save prediction scores
 python 1_HistoPathology/3_HistoPath_savescore.py \
     --config config/survcox/config_ffpe_savescore_survcox.json
-
 python 2_GeneExpression/2_GeneExpress_savescore.py \
     --config config/survcox/config_rna_savescore_survcox.json
 
-# Extract feature embeddings (2048-dim vectors)
+# Extract 2048-dimensional feature embeddings
 python 1_HistoPathology/4_HistoPath_extractfeatures.py \
     --config config/survcox/config_ffpe_extractfeatures_survcox.json
-
 python 2_GeneExpression/3_GeneExpress_extractfeatures.py \
     --config config/survcox/config_rna_extractfeatures_survcox.json
 
@@ -424,170 +349,228 @@ python 4_LateFusion/1_MergeScores.py
 
 ### Stage 3: Fusion Model Training
 
-Train all fusion models:
-
 ```bash
-# Early Fusion (approximately 2 hours)
+# Early Fusion MLP — baseline replicating [1] (~2 hours)
 python train_with_cv.py \
     --modality early \
     --config config/survcox/config_feature_train_survcox.json \
     --n_folds 10
 
-# Late Fusion (approximately 1 minute)
+# Late Fusion — validation zero-check (~1 minute)
 Rscript 4_LateFusion/2_LateFusion.R
 
-# Joint Fusion (approximately 8 hours)
-python train_with_cv.py \
-    --modality joint \
-    --config config/survcox/config_joint_train_survcox.json \
-    --n_folds 10
+# Attention-based architectures (5 seeds each)
+python 3_EarlyFusion/train_attention_models.py
+python 3_EarlyFusion/run_attention_experiment.py
 ```
 
-### Complete Pipeline Script
-
-For convenience, run the entire pipeline:
+### Stage 4: InterSHAP Computation
 
 ```bash
-#!/bin/bash
-# run_full_pipeline.sh
+# Run full InterSHAP pipeline (synthetic validation → real data)
+bash Intershap/run_system.sh
 
-echo "Stage 1: Training Unimodal Models"
-python train_with_cv.py --modality ffpe --config config/survcox/config_ffpe_train_survcox.json --n_folds 10
-python train_with_cv.py --modality rna --config config/survcox/config_rna_train_survcox.json --n_folds 10
-
-echo "Stage 2: Extracting Features and Scores"
-python 1_HistoPathology/3_HistoPath_savescore.py --config config/survcox/config_ffpe_savescore_survcox.json
-python 2_GeneExpression/2_GeneExpress_savescore.py --config config/survcox/config_rna_savescore_survcox.json
-python 1_HistoPathology/4_HistoPath_extractfeatures.py --config config/survcox/config_ffpe_extractfeatures_survcox.json
-python 2_GeneExpression/3_GeneExpress_extractfeatures.py --config config/survcox/config_rna_extractfeatures_survcox.json
-python 3_EarlyFusion/1_Concat2Features.py
-python 3_EarlyFusion/split_features.py
-python 4_LateFusion/1_MergeScores.py
-
-echo "Stage 3: Training Fusion Models"
-python train_with_cv.py --modality early --config config/survcox/config_feature_train_survcox.json --n_folds 10
-Rscript 4_LateFusion/2_LateFusion.R
-python train_with_cv.py --modality joint --config config/survcox/config_joint_train_survcox.json --n_folds 10
-
-echo "Pipeline Complete"
-python analyze_results.py
+# Or run individually:
+python Intershap/synthetic_verification.py      # Verify on known interaction patterns
+python Intershap/full_dataset_analysis.py        # Full cohort InterSHAP scores
+python Intershap/paper_analysis.py               # Multi-seed cross-fusion comparison
+python Intershap/cv_robustness_analysis.py       # Cross-fold stability
 ```
 
-### Estimated Training Times
+This executes:
+1. **Synthetic validation** — verifies implementation on data with known interaction patterns
+2. **Late Fusion zero-check** — confirms |InterSHAP| < 10⁻¹⁵ for linear combinations
+3. **Coalition evaluation** — 4 forward passes × 575 patients × 4 architectures
+4. **Variance decomposition** — WSI vs RNA vs Interaction breakdown
+5. **Masking ablation** — mean imputation vs random shuffle vs zero imputation
 
-| Model | Time per Fold | Total (10 folds) |
-|-------|---------------|------------------|
-| WSI (FFPE) | 45 minutes | 7.5 hours |
-| RNA | 10 minutes | 1.5 hours |
-| Early Fusion | 12 minutes | 2 hours |
-| Late Fusion | N/A | 1 minute |
-| Joint Fusion | 50 minutes | 8 hours |
-| **Total** | - | **19-20 hours** |
+Runtime: ~3 minutes per architecture on an RTX 3060.
 
-Times measured on NVIDIA RTX 3060 12GB.
+### Stage 5: Prognostic Validation
+
+```bash
+# All 14 validation analyses in a single script:
+# Cox PH, quartile dose-response, bootstrap (n=1000), subgroup analysis,
+# sensitivity, Schoenfeld test, C-index, 10-fold CV, unimodal comparison,
+# Cohen's d / NNH, RMST, landmark, piecewise, permutation (n=10,000)
+python Intershap/statistical_validation.py
+```
 
 ---
 
 ## Model Architectures
 
-### WSI Model (Histopathology)
+### WSI Encoder (Histopathology)
 
 ```
-Input: 224x224 RGB patches (100 patches per WSI)
-    |
-    v
-ResNet50 (pretrained ImageNet, last 2 blocks trainable)
-    |
-    v
-Aggregation Layer (identity/attention/mean)
-    |
-    v
-Output: Risk score (1 value) or survival bin (4 classes)
+Input: 224×224 RGB patches (100 patches per WSI at 20× magnification)
+    → ResNet-50 (ImageNet-pretrained, last 2 blocks trainable)
+    → Slide-level averaging
+    → Output: 2048-dimensional embedding
 ```
 
-Architecture details:
-- **Backbone**: ResNet50 with frozen early layers
-- **Fine-tuning**: Last 2 residual blocks (layer3, layer4)
-- **Output dimension**: 2048 (before final layer)
-- **Aggregation**: Identity (per-patch predictions averaged)
-
-### RNA Model (Gene Expression)
+### RNA Encoder (Gene Expression)
 
 ```
-Input: 12,778 gene expression values (log2 FPKM)
-    |
-    v
-Linear(12778 -> 4096) + ReLU + Dropout(0.5)
-    |
-    v
-Linear(4096 -> 2048) + ReLU + Dropout(0.5)
-    |
-    v
-Linear(2048 -> 1) (Cox) or Linear(2048 -> 4) (Survival Bin)
-    |
-    v
-Output: Risk score or survival class probabilities
+Input: 12,778 gene expression values (log2 RSEM)
+    → Linear(12778 → 4096) + ReLU + Dropout(0.5)
+    → Linear(4096 → 2048) + ReLU + Dropout(0.5)
+    → Output: 2048-dimensional embedding
 ```
 
-### Early Fusion Model
+### Early Fusion MLP (Baseline)
 
 ```
-Input: 4096 concatenated features (2048 WSI + 2048 RNA)
-    |
-    v
-Linear(4096 -> 2048) + ReLU + Dropout(0.5)
-    |
-    v
-Linear(2048 -> 200) + ReLU + Dropout(0.5)
-    |
-    v
-Linear(200 -> 1)
-    |
-    v
-Output: Risk score
+Input: 4096 concatenated features (2048 WSI ∥ 2048 RNA)
+    → Linear(4096 → 2048) + ReLU + Dropout(0.25)
+    → Linear(2048 → 200) + ReLU + Dropout(0.25)
+    → Linear(200 → 1)
+    → Output: Log-risk score ĥ
 ```
 
-### Late Fusion Model
+Replicates the architecture in [1]. Can learn interactions implicitly through hidden layers but does not explicitly encode them.
+
+### Cross-Attention Fusion
+
+Bidirectional attention where each modality queries the other:
 
 ```
-Input: 2 scores (WSI risk score + RNA risk score)
-    |
-    v
-Cox Proportional Hazards with L1 Regularization (Lasso)
-    |
-    v
-Output: Combined risk score (weighted sum)
+A_WSI→RNA = softmax(Q_WSI · K_RNA^T / √d) · V_RNA
 ```
 
-The Lasso penalty automatically learns optimal weights for each modality.
+Explicitly models cross-modal dependencies through learned attention weights (1.8M params).
 
-### Joint Fusion Model
+### Bilinear Fusion
+
+Low-rank multiplicative interaction:
 
 ```
-Input: 224x224 patches + 12,778 gene values
-    |
-    +--------------------+--------------------+
-    |                                         |
-    v                                         v
-ResNet50                                  RNA MLP
-(2048-dim)                               (2048-dim)
-    |                                         |
-    +-----------+-----------------------------+
-                |
-                v
-          Concatenate (4096-dim)
-                |
-                v
-          Linear(4096 -> 1) + Dropout(0.8)
-                |
-                v
-          Output: Risk score
+z_bilinear = (W₁ · RNA) ⊙ (W₂ · WSI),   Wᵢ ∈ ℝ^(64×2048)
 ```
 
-Key features:
-- End-to-end training with separate learning rates per modality
-- High dropout (0.8) on fusion layer to prevent overfitting
-- Shared gradients enable cross-modal learning
+Forces the model to compute outer-product interactions between modalities (0.54M params).
+
+### Gated Fusion
+
+Dynamic weighting conditioned on both modalities:
+
+```
+α = σ(W_g[RNA; WSI])
+z = α ⊙ f(RNA) + (1 − α) ⊙ g(WSI)
+```
+
+Learns to dynamically balance modality contributions (3.2M params).
+
+### Late Fusion (Validation)
+
+Linear combination of unimodal risk scores via L1-regularised Cox regression. Used as a zero-check: InterSHAP must be exactly zero by construction (verified: |InterSHAP| < 10⁻¹⁵).
+
+---
+
+## InterSHAP Analysis
+
+### Adaptation for Cox Survival Models
+
+InterSHAP [7] is adapted for survival prediction with three key design choices:
+
+1. **Output space**: Shapley values are computed on the log-risk score ĥ (raw network output) rather than the hazard exp(ĥ), to avoid conflating model-learned interactions with mathematical artefacts of the Cox formulation.
+
+2. **Coalition evaluation**: For two modalities, four coalitions are evaluated per patient:
+   - v(∅): Both modalities masked (baseline prediction)
+   - v({WSI}): WSI present, RNA masked
+   - v({RNA}): RNA present, WSI masked
+   - v({WSI, RNA}): Full model (both present)
+
+3. **Masking strategy**: Missing modalities replaced by dataset-mean embeddings. Validated against random-shuffle and zero-imputation baselines.
+
+### Shapley Computation (M = 2 modalities)
+
+```
+ϕ_WSI = ½[v({WSI}) − v(∅)] + ½[v({WSI, RNA}) − v({RNA})]
+ϕ_RNA = ½[v({RNA}) − v(∅)] + ½[v({WSI, RNA}) − v({WSI})]
+ϕ_int = ½[v({WSI, RNA}) − v({WSI}) − v({RNA}) + v(∅)]
+```
+
+### Global InterSHAP
+
+Interaction as a percentage of total model behaviour:
+
+```
+InterSHAP = Σᵢ |ϕ_int⁽ⁱ⁾| / Σᵢ (|ϕ_WSI⁽ⁱ⁾| + |ϕ_RNA⁽ⁱ⁾| + |ϕ_int⁽ⁱ⁾|) × 100%
+```
+
+### Synthetic Validation
+
+Three scenarios with known interaction patterns verify implementation correctness:
+
+| Scenario | Expected | Deterministic | FCNN (Learned) |
+|----------|----------|---------------|----------------|
+| Uniqueness (single modality) | 0% | 0.0% | 2.1% |
+| Synergy (XOR, both required) | 100% | 100% | 99.7% |
+| Redundancy (shared info) | 30–50% | 40% | 35.2% |
+
+### Results: Performance vs Interaction
+
+| Architecture | Params | Test C-Index | InterSHAP (%) | Brier@36mo |
+|-------------|--------|-------------|---------------|------------|
+| Early Fusion MLP | 8.8M | 0.636 ± 0.02 | 4.82 ± 4.65 | 0.192 |
+| Cross-Attention | 1.8M | 0.814 ± 0.01 | 3.03 ± 2.64 | 0.156 |
+| Bilinear Fusion | 0.54M | 0.819 ± 0.01 | 3.72 ± 3.16 | 0.151 |
+| Gated Fusion | 3.2M | 0.807 ± 0.02 | 4.45 ± 4.94 | 0.162 |
+
+Values show mean ± SD from 5-seed training. InterSHAP computed on test set (n = 115).
+
+### Variance Decomposition
+
+Stable across all architectures:
+
+| Component | MLP | Cross-Attn | Bilinear | Gated |
+|-----------|-----|-----------|----------|-------|
+| WSI | 42.2 ± 2.1% | 43.2 ± 1.8% | 36.8 ± 2.4% | 43.7 ± 2.0% |
+| RNA | 53.0 ± 2.3% | 53.8 ± 1.9% | 59.5 ± 2.6% | 51.8 ± 2.2% |
+| Interaction | 4.8 ± 0.8% | 3.0 ± 0.5% | 3.7 ± 0.6% | 4.5 ± 0.9% |
+
+---
+
+## Prognostic Biomarker Validation
+
+While global InterSHAP is low (~5%), individual patient-level variation carries strong prognostic signal.
+
+### Cox Regression
+
+| Model | HR (95% CI) | p-value | C-index |
+|-------|------------|---------|---------|
+| Univariate (per SD) | 1.96 (1.76–2.18) | 1.5 × 10⁻³⁵ | 0.755 |
+| Univariate (high vs low) | 3.49 (2.53–4.83) | 4.1 × 10⁻¹⁴ | — |
+| Multivariate (per SD, adjusted for tumour type) | 1.60 (1.39–1.83) | 3.9 × 10⁻¹¹ | 0.782 |
+| Fully adjusted (age, sex, tumour type, KPS) | 1.42 (1.21–1.67) | < 0.0001 | — |
+
+### Kaplan-Meier Stratification
+
+Stratification by median InterSHAP:
+- **High InterSHAP** (≥ median): 33.6 months median survival
+- **Low InterSHAP** (< median): 114.0 months median survival
+- Difference: 80.4 months (p < 10⁻¹⁵, log-rank test)
+- 5-year survival: 34% vs 70%
+
+### Dose-Response by Quartile
+
+| Quartile | N | Mean InterSHAP (%) | Median Survival | Events |
+|----------|---|-------------------|-----------------|--------|
+| Q1 (Lowest) | 144 | 0.16 | 114.0 months | 27 |
+| Q2 | 144 | 0.54 | 133.6 months | 29 |
+| Q3 | 143 | 1.12 | 69.8 months | 37 |
+| Q4 (Highest) | 144 | 2.86 | 16.8 months | 102 |
+
+Trend test: p < 10⁻³⁶
+
+### Robustness Analyses
+
+- **Bootstrap** (n = 1,000): HR = 2.02 (95% CI: 1.71–2.52)
+- **Permutation test** (n = 10,000): p = 0.0032
+- **Landmark analysis**: Effect persists with attenuation (HR 1.96 → 1.23 at 36 months, all p < 0.05)
+- **RMST**: High-InterSHAP patients lost 16.3 months of expected survival at 60 months
+- **Subgroup**: Effect concentrated in LGG (HR = 1.99, n = 508); GBM underpowered (HR = 1.06, n = 67)
 
 ---
 
@@ -595,107 +578,62 @@ Key features:
 
 ### Concordance Index (C-Index)
 
-The primary evaluation metric is the Concordance Index:
-
 ```
 C-Index = P(risk(i) > risk(j) | survival(i) < survival(j))
 ```
 
-Interpretation:
-- **0.5**: Random predictions (no discrimination)
-- **0.6-0.7**: Acceptable discrimination
-- **0.7-0.8**: Good discrimination
-- **0.8+**: Excellent discrimination
+| Score | Interpretation |
+|-------|---------------|
+| 0.5 | Random predictions |
+| 0.6–0.7 | Acceptable discrimination |
+| 0.7–0.8 | Good discrimination |
+| 0.8+ | Excellent discrimination |
 
-### Expected Results
+### Results Summary
 
-Based on the original paper (TCGA glioma cohort):
+| Model | Test C-Index |
+|-------|-------------|
+| WSI Only (unimodal) | ~0.65 |
+| RNA Only (unimodal) | ~0.70 |
+| Early Fusion MLP | 0.636 ± 0.02 |
+| Cross-Attention | 0.814 ± 0.01 |
+| Bilinear Fusion | 0.819 ± 0.01 |
+| Gated Fusion | 0.807 ± 0.02 |
 
-| Model | Test C-Index (Expected) |
-|-------|-------------------------|
-| WSI Only | 0.70 - 0.75 |
-| RNA Only | 0.75 - 0.80 |
-| Early Fusion | 0.76 - 0.81 |
-| Late Fusion | 0.77 - 0.82 |
-| Joint Fusion | 0.78 - 0.83 |
+### Replication Note
 
-### Analyzing Results
-
-After training, analyze results:
-
-```bash
-python analyze_results.py
-```
-
-This script reads the output CSV files and calculates C-Index for train/val/test splits.
+The Early Fusion MLP (C-index 0.636) underperforms the original implementation in [1] (C-index 0.84). This replication gap is discussed in the paper; the interaction analysis retains internal validity as it compares architectures trained identically under controlled conditions.
 
 ### Output Files
 
-Each trained model generates:
+Each trained model generates predictions in:
 
 ```
 MyData/results/{modality}/checkpoints/outputs/{model_name}/
-|-- train_output_best.csv    # Best model predictions on train
-|-- val_output_best.csv      # Best model predictions on validation
-|-- test_output_best.csv     # Best model predictions on test
-|-- train_output_last.csv    # Last epoch predictions on train
-|-- val_output_last.csv      # Last epoch predictions on validation
-|-- test_output_last.csv     # Last epoch predictions on test
-+-- model_best.pth           # Saved model weights
-```
-
-Output CSV format:
-```csv
-case,score,survival_months,vital_status,survival_bin
-TCGA-XX-XXXX,0.234,45.6,1,3
+├── train_output_best.csv
+├── val_output_best.csv
+├── test_output_best.csv
+└── model_best.pth
 ```
 
 ---
 
 ## Troubleshooting
 
-### Common Issues
+### CUDA Out of Memory
 
-#### 1. CUDA Out of Memory
+Reduce `batch_size` in config (try 64 or 32) or reduce `max_patch_per_wsi_train` (try 50).
 
-```
-RuntimeError: CUDA out of memory
-```
+### Zero or Negative Survival Times
 
-**Solutions:**
-- Reduce `batch_size` in config (try 64 or 32)
-- Reduce `max_patch_per_wsi_train` (try 50)
-- Close other GPU applications
+Ensure all `survival_months` values are > 0. Preprocessing scripts set a minimum of 0.1 months.
 
-#### 2. Zero or Negative Survival Times
+### Missing Patches
 
-```
-ValueError: Survival times must be positive
-```
+Verify patch extraction completed: each folder should contain `loc.txt` and `*_patch_*.png` files.
 
-**Solution:**
-Ensure all `survival_months` values are > 0. The preprocessing scripts set a minimum of 0.1 months.
+### R Package Errors
 
-#### 3. Missing Patches
-
-```
-FileNotFoundError: No patches found for WSI
-```
-
-**Solution:**
-Verify patch extraction completed:
-```bash
-ls MyData/patches/TCGA-XX-XXXX-01Z-00-DX1/
-```
-Each folder should contain `loc.txt` and `*_patch_*.png` files.
-
-#### 4. R Package Errors
-
-```
-Error in library(survcomp): there is no package called 'survcomp'
-```
-
-**Solution:**
 Install Bioconductor packages:
 ```R
 if (!require("BiocManager", quietly = TRUE))
@@ -703,58 +641,44 @@ if (!require("BiocManager", quietly = TRUE))
 BiocManager::install("survcomp")
 ```
 
-#### 5. Cross-Validation Fold Failures
+### InterSHAP Zero-Check Failure
 
-If a fold fails during CV training, check:
-1. Sufficient samples in each survival bin
-2. No empty batches (reduce batch size)
-3. GPU memory (first fold may work, later folds fail)
-
-### Logging and Debugging
-
-Enable verbose logging:
-```bash
-python train_with_cv.py --modality ffpe --config config.json --n_folds 10 2>&1 | tee training.log
-```
-
-Monitor GPU usage:
-```bash
-watch -n 1 nvidia-smi
-```
+If the Late Fusion zero-check yields |InterSHAP| > 10⁻¹⁰, there is likely an implementation error in the coalition evaluation. Verify that the Late Fusion model is a strict linear combination of unimodal scores.
 
 ---
 
 ## References
 
-### Original Paper
+1. Steyaert, S., et al.: Multimodal deep learning to predict prognosis in brain tumors. *Commun. Med.* 3, 44 (2023). https://doi.org/10.1038/s43856-023-00349-y
+2. Zhou, H., et al.: Multimodal data integration for precision oncology: a survey. arXiv:2406.19611 (2024)
+3. Zheng, Y., et al.: Spatial cellular architecture predicts prognosis in glioblastoma. *Nat. Commun.* 14, 4122 (2023)
+4. Mobadersany, P., et al.: Predicting cancer outcomes from histology and genomics. *PNAS* 115(13), E2970–E2979 (2018)
+5. Guarrasi, V., et al.: Finding optimal fusion points in multimodal medical imaging. *IEEE TMI* 44(1), 234–247 (2025)
+6. Wenderoth, L., et al.: Measuring cross-modal interactions in multimodal models. *AAAI-25*, pp. 21501–21509 (2025)
+7. Lundberg, S.M., Lee, S.-I.: A unified approach to interpreting model predictions. *NeurIPS 30*, 4765–4774 (2017)
+8. Cox, D.R.: Regression models and life-tables. *JRSS-B* 34(2), 187–220 (1972)
 
-Steyaert, S., Qiu, Y.L., Zheng, Y., Mukherjee, P., Vogel, H., and Gevaert, O. (2023). 
-"Multimodal data fusion of adult and pediatric brain tumors with deep learning." 
-*Communications Medicine*, 3, 124.
+### Data Sources
 
-DOI: https://doi.org/10.1038/s43856-023-00349-y
-
-### Original Repository
-
-https://github.com/gevaertlab/MultiModalBrainSurvival
-
-### TCGA Data
-
-- GBM (Glioblastoma): https://portal.gdc.cancer.gov/projects/TCGA-GBM
-- LGG (Lower Grade Glioma): https://portal.gdc.cancer.gov/projects/TCGA-LGG
-
-### Key Dependencies
-
-- PyTorch: https://pytorch.org/
-- OpenSlide: https://openslide.org/
-- scikit-survival: https://scikit-survival.readthedocs.io/
-- lifelines: https://lifelines.readthedocs.io/
+- TCGA-GBM: https://portal.gdc.cancer.gov/projects/TCGA-GBM
+- TCGA-LGG: https://portal.gdc.cancer.gov/projects/TCGA-LGG
 
 ---
 
 ## License
 
-This project is for academic research purposes. Please cite the original paper if using this code.
+This project is for academic research purposes. Please cite the paper if using this code.
+
+## Citation
+
+```bibtex
+@inproceedings{swift2026intershap,
+  title={Quantifying Cross-Modal Interactions in Multimodal Glioma Survival Prediction: Evidence for Additive Signal Integration and Prognostic Biomarker Potential},
+  author={Swift, Iain and Ye, Jing Hua and O'Reilly, Ruair{\'\i}},
+  booktitle={Proceedings of the xAI World Conference},
+  year={2026}
+}
+```
 
 ## Contact
 
