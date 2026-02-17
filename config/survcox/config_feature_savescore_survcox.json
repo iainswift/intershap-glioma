@@ -1,0 +1,18 @@
+{
+    "batch_size": 128,
+    "task": "survival_prediction",
+    "num_classes": 1,
+    "use_cuda": false,
+    "train_csv_path": "MyData/splits/early_train.csv",
+    "val_csv_path": "MyData/splits/early_train.csv",
+    "test_csv_path": "MyData/splits/early_test.csv",
+    "num_workers": 0,
+    "num_epochs": 80,
+    "lr": 1e-06,
+    "weight_decay": 1e-05,
+    "flag": "earlyfusion_model_survcox",
+    "restore_path": "MyData/results/early_fusion/checkpoints/models/earlyfusion_model_survcox/model_dict_best.pt",
+    "model_path": "MyData/results/early_fusion/checkpoints/models/earlyfusion_model_survcox/model_dict_best.pt",
+    "output_path": "MyData/results/early_fusion/checkpoints/outputs/earlyfusion_model_survcox/"
+    
+}

@@ -1,0 +1,24 @@
+# VS Code
+.vscode/
+
+# History
+.history/
+
+# Data
+MyData/
+3_EarlyFusion/MyData/
+wsi pre processing/
+rna pre processing/
+
+# Model weights
+*.pt
+*.pth
+*.h5
+
+# Reference papers
+*.pdf
+paper_content.txt
+
+# Python
+__pycache__/
+*.pyc

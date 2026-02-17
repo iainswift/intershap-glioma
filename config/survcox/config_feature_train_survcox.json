@@ -1,0 +1,18 @@
+{
+    "batch_size": 128,
+    "task": "survival_prediction",
+    "num_classes": 1,
+    "use_cuda": true,
+    "train_csv_path": "MyData/splits/early_train.csv",
+    "val_csv_path": "MyData/splits/early_train.csv",
+    "num_workers": 0,
+    "num_epochs": 80,
+    "lr": 1e-06,
+    "weight_decay": 1e-05,
+    "flag": "earlyfusion_model_survcox",
+    "checkpoint_path": "MyData/results/early_fusion/checkpoints/",
+    "summary_path": "MyData/results/early_fusion/summary/",
+    "model_path": "",
+    "restore_path": "",
+    "test_csv_path": "MyData/splits/early_test.csv"
+}
